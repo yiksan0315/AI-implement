@@ -10,7 +10,7 @@ def hello():
     This is a sample function that we will try to import and run to ensure that
     our environment is correctly set up on Google Colab.
     """
-    print('Hello from pytorch101.py!')
+    print("Hello from pytorch101.py!")
 
 
 def create_sample_tensor() -> Tensor:
@@ -27,7 +27,11 @@ def create_sample_tensor() -> Tensor:
     #                     TODO: Implement this function                      #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+
+    x = torch.zeros(3, 2)
+    x[0, 1] = 10
+    x[1, 0] = 100
+
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
@@ -62,6 +66,8 @@ def mutate_tensor(
     #                     TODO: Implement this function                      #
     ##########################################################################
     # Replace "pass" statement with your code
+    for (i, j), v in zip(indices, values):
+        x[i, j] = v
     pass
     ##########################################################################
     #                            END OF YOUR CODE                            #
@@ -91,6 +97,9 @@ def count_tensor_elements(x: Tensor) -> int:
     #   You CANNOT use the built-in functions torch.numel(x) or x.numel().   #
     ##########################################################################
     # Replace "pass" statement with your code
+    num_elements = 1
+    for dim in x.shape:
+        num_elements *= dim
     pass
     ##########################################################################
     #                            END OF YOUR CODE                            #
@@ -112,6 +121,7 @@ def create_tensor_of_pi(M: int, N: int) -> Tensor:
     ##########################################################################
     #         TODO: Implement this function. It should take one line.        #
     ##########################################################################
+    x = torch.full((M, N), 3.14)
     # Replace "pass" statement with your code
     pass
     ##########################################################################
@@ -450,9 +460,7 @@ def zero_row_min(x: Tensor) -> Tensor:
     return y
 
 
-def batched_matrix_multiply(
-    x: Tensor, y: Tensor, use_loop: bool = True
-) -> Tensor:
+def batched_matrix_multiply(x: Tensor, y: Tensor, use_loop: bool = True) -> Tensor:
     """
     Perform batched matrix multiplication between the tensor x of shape
     (B, N, M) and the tensor y of shape (B, M, P).
@@ -664,7 +672,7 @@ def challenge_get_uniques(x: torch.Tensor) -> Tuple[Tensor, Tensor]:
     2. indices: int64 Tensor of shape (K, ) - giving indices of the first
        occurring unique values.
 
-    Concretely, this should hold True: x[indices[i]] = uniques[i] 
+    Concretely, this should hold True: x[indices[i]] = uniques[i]
 
     Your implementation should not use any explicit Python loops (including
     comprehensions), and should not require more than O(N) memory. Creating
