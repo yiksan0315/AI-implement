@@ -2,6 +2,7 @@
 Implements a two-layer Neural Network classifier in PyTorch.
 WARNING: you SHOULD NOT use ".to()" or ".cuda()" in each implementation block.
 """
+
 import torch
 import random
 import statistics
@@ -145,9 +146,10 @@ def nn_forward_pass(params: Dict[str, torch.Tensor], X: torch.Tensor):
     # TODO: Perform the forward pass, computing the class scores for the input.#
     # Store the result in the scores variable, which should be an tensor of    #
     # shape (N, C).                                                            #
+    hidden = X @ W1 + b1
+    scores = hidden @ W2 + b2
     ############################################################################
     # Replace "pass" statement with your code
-    pass
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -159,7 +161,7 @@ def nn_forward_backward(
     params: Dict[str, torch.Tensor],
     X: torch.Tensor,
     y: Optional[torch.Tensor] = None,
-    reg: float = 0.0
+    reg: float = 0.0,
 ):
     """
     Compute the loss and gradients for a two layer fully connected neural
@@ -335,9 +337,7 @@ def nn_train(
     }
 
 
-def nn_predict(
-    params: Dict[str, torch.Tensor], loss_func: Callable, X: torch.Tensor
-):
+def nn_predict(params: Dict[str, torch.Tensor], loss_func: Callable, X: torch.Tensor):
     """
     Use the trained weights of this two-layer network to predict labels for
     data points. For each data point we predict scores for each of the C
@@ -412,9 +412,7 @@ def nn_get_search_params():
     )
 
 
-def find_best_net(
-    data_dict: Dict[str, torch.Tensor], get_param_set_fn: Callable
-):
+def find_best_net(data_dict: Dict[str, torch.Tensor], get_param_set_fn: Callable):
     """
     Tune hyperparameters using the validation set.
     Store your best trained TwoLayerNet model in best_net, with the return value

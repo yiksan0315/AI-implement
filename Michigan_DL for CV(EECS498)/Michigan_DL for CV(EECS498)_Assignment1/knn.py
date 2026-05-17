@@ -1,8 +1,11 @@
 """
 Implements a K-Nearest Neighbor classifier in PyTorch.
 """
+
 import torch
 from typing import Dict, List
+import numpy as np
+import statistics
 
 
 def hello():
@@ -52,6 +55,7 @@ def compute_distances_two_loops(x_train: torch.Tensor, x_test: torch.Tensor):
     num_train = x_train.shape[0]
     num_test = x_test.shape[0]
     dists = x_train.new_zeros(num_train, num_test)
+
     ##########################################################################
     # TODO: Implement this function using a pair of nested loops over the    #
     # training data and the test data.                                       #
@@ -60,7 +64,25 @@ def compute_distances_two_loops(x_train: torch.Tensor, x_test: torch.Tensor):
     # functions from torch.nn or torch.nn.functional.                        #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+
+    x_train_flat = x_train.reshape(num_train, -1)
+    x_test_flat = x_test.reshape(num_test, -1)
+
+    print(x_train_flat.shape, x_test_flat.shape)
+
+    # 2. 중첩 루프를 통한 거리 계산
+    for i in range(num_train):
+        for j in range(num_test):
+            # i번째 학습 데이터와 j번째 테스트 데이터 간의 차이 계산
+            diff = x_train_flat[i] - x_test_flat[j]
+
+            # 제곱 합 계산 (torch.norm 등을 사용하지 않음)
+            squared_diff = diff * diff
+            dists[i, j] = torch.sum(squared_diff)
+    # for i in range(num_train):
+    #     for j in range(num_test):
+    #         dists[i, j] = torch.sqrt(torch.sum((x_train[i] - x_test[j]) ** 2))
+
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -102,9 +124,19 @@ def compute_distances_one_loop(x_train: torch.Tensor, x_test: torch.Tensor):
     #                                                                        #
     # You may not use torch.norm (or its instance method variant), nor any   #
     # functions from torch.nn or torch.nn.functional.                        #
+    x_train_flat = x_train.reshape(num_train, -1)
+    x_test_flat = x_test.reshape(num_test, -1)
+    for i in range(num_train):
+        # x_train_flat[i]의 형상: (D,)
+        # x_test_flat의 형상: (num_test, D)
+        # 브로드캐스팅에 의해 (D,)와 (num_test, D) 사이의 뺄셈이 가능해집니다.
+        diff = x_train_flat[i] - x_test_flat
+
+        # 제곱 계산 후 각 테스트 데이터 포인트별로 합산 (dim=1)
+        # result shape: (num_test,)
+        dists[i, :] = torch.sum(diff * diff, dim=1)
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -156,7 +188,25 @@ def compute_distances_no_loops(x_train: torch.Tensor, x_test: torch.Tensor):
     #       and a matrix multiply.                                           #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    # 1. 입력 데이터를 벡터 형태로 플래튼(Flatten)
+    x_train_flat = x_train.reshape(num_train, -1)
+    x_test_flat = x_test.reshape(num_test, -1)
+
+    # 2. 각 벡터의 제곱합 계산 (L2 norm의 제곱)
+    # x_train_sq shape: (num_train, 1)
+    x_train_sq = torch.sum(x_train_flat**2, dim=1, keepdim=True)
+
+    # x_test_sq shape: (1, num_test)
+    x_test_sq = torch.sum(x_test_flat**2, dim=1, keepdim=False).unsqueeze(0)
+
+    # 3. 행렬 곱셈을 통한 -2 * (X . Y^T) 계산
+    # x_train_flat: (num_train, D), x_test_flat.T: (D, num_test)
+    # result shape: (num_train, num_test)
+    two_plus_xy = torch.mm(x_train_flat, x_test_flat.t()) * -2
+
+    # 4. 브로드캐스팅을 이용한 최종 결합: (u^2 + v^2 - 2uv)
+    # (num_train, 1) + (1, num_test) + (num_train, num_test)
+    dists = x_train_sq + x_test_sq + two_plus_xy
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -199,7 +249,27 @@ def predict_labels(dists: torch.Tensor, y_train: torch.Tensor, k: int = 1):
     # HINT: Look up the function torch.topk                                  #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    num_classes = torch.max(y_train).item() + 1
+
+    for j in range(num_test):
+        # 1. j번째 테스트 데이터와 모든 학습 데이터 사이의 거리와 라벨을 가져옵니다.
+        distances_for_j = dists[:, j]
+
+        # 2. 거리가 가장 작은 K개의 인덱스를 찾습니다.
+        # torch.topk(..., largest=False)는 가장 작은 값을 찾아줍니다.
+        _, k_nearest_indices = torch.topk(distances_for_j, k, largest=False)
+
+        # 3. 해당 인덱스들의 실제 라벨을 가져옵니다.
+        k_nearest_labels = y_train[k_nearest_indices]
+
+        # 4. 투표 진행
+        candidate = torch.zeros(num_classes, dtype=torch.long)
+        for label in k_nearest_labels:
+            candidate[label] += 1
+
+        # 5. 최대 빈도 라벨 선택 (동점일 경우 앞쪽/작은 인덱스 선택)
+        y_pred[j] = torch.argmax(candidate)
+
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -207,7 +277,6 @@ def predict_labels(dists: torch.Tensor, y_train: torch.Tensor, k: int = 1):
 
 
 class KnnClassifier:
-
     def __init__(self, x_train: torch.Tensor, y_train: torch.Tensor):
         """
         Create a new K-Nearest Neighbor classifier with the specified training
@@ -223,7 +292,8 @@ class KnnClassifier:
         # `self.x_train` and `self.y_train`, accordingly.                    #
         ######################################################################
         # Replace "pass" statement with your code
-        pass
+        self.x_train = x_train
+        self.y_train = y_train
         ######################################################################
         #                         END OF YOUR CODE                           #
         ######################################################################
@@ -247,7 +317,8 @@ class KnnClassifier:
         # to predict output labels.                                          #
         ######################################################################
         # Replace "pass" statement with your code
-        pass
+        dists = compute_distances_no_loops(self.x_train, x_test)
+        y_test_pred = predict_labels(dists, self.y_train, k)
         ######################################################################
         #                         END OF YOUR CODE                           #
         ######################################################################
@@ -258,7 +329,7 @@ class KnnClassifier:
         x_test: torch.Tensor,
         y_test: torch.Tensor,
         k: int = 1,
-        quiet: bool = False
+        quiet: bool = False,
     ):
         """
         Utility method for checking the accuracy of this classifier on test
@@ -279,10 +350,7 @@ class KnnClassifier:
         num_samples = x_test.shape[0]
         num_correct = (y_test == y_test_pred).sum().item()
         accuracy = 100.0 * num_correct / num_samples
-        msg = (
-            f"Got {num_correct} / {num_samples} correct; "
-            f"accuracy is {accuracy:.2f}%"
-        )
+        msg = f"Got {num_correct} / {num_samples} correct; accuracy is {accuracy:.2f}%"
         if not quiet:
             print(msg)
         return accuracy
@@ -321,7 +389,8 @@ def knn_cross_validate(
     # HINT: torch.chunk                                                      #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    x_train_folds = list(torch.chunk(x_train, num_folds))
+    y_train_folds = list(torch.chunk(y_train, num_folds))
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -342,7 +411,17 @@ def knn_cross_validate(
     # HINT: torch.cat                                                        #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    for k in k_choices:
+        k_to_accuracies[k] = []
+
+        for i in range(num_folds):
+            x_val = x_train_folds[i]
+            y_val = y_train_folds[i]
+            x_train_cv = torch.cat(x_train_folds[:i] + x_train_folds[i + 1 :], dim=0)
+            y_train_cv = torch.cat(y_train_folds[:i] + y_train_folds[i + 1 :], dim=0)
+
+            classifier = KnnClassifier(x_train_cv, y_train_cv)
+            k_to_accuracies[k].append(classifier.check_accuracy(x_val, y_val, k))
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
@@ -366,13 +445,17 @@ def knn_get_best_k(k_to_accuracies: Dict[int, List]):
             the k_to_accuracies info.
     """
     best_k = 0
+    min_mean = 0
     ##########################################################################
     # TODO: Use the results of cross-validation stored in k_to_accuracies to #
     # choose the value of k, and store result in `best_k`. You should choose #
     # the value of k that has the highest mean accuracy accross all folds.   #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+    for k, items in k_to_accuracies.items():
+        if min_mean < statistics.mean(items):
+            min_mean = statistics.mean(items)
+            best_k = k
     ##########################################################################
     #                           END OF YOUR CODE                             #
     ##########################################################################
