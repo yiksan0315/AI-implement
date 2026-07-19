@@ -2,6 +2,7 @@
 Implements linear classifeirs in PyTorch.
 WARNING: you SHOULD NOT use ".to()" or ".cuda()" in each implementation block.
 """
+
 import torch
 import random
 import statistics
@@ -91,7 +92,7 @@ class LinearClassifier:
         self.W = W_dict["W"]
         if self.W is None:
             raise Exception("Failed to load your checkpoint")
-        # print("load checkpoint file: {}".format(path))
+        print("load checkpoint file: {}".format(path))
 
 
 class LinearSVM(LinearClassifier):
@@ -125,9 +126,7 @@ class Softmax(LinearClassifier):
 # **************************************************#
 
 
-def svm_loss_naive(
-    W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
-):
+def svm_loss_naive(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float):
     """
     Structured SVM loss function, naive implementation (with loops).
 
@@ -154,7 +153,7 @@ def svm_loss_naive(
     loss = 0.0
     for i in range(num_train):
         scores = W.t().mv(X[i])
-        correct_class_score = scores[y[i]]
+        correct_class_score = scores[y[i]]  # 실제 정답인 class에게 평가한 점수
         for j in range(num_classes):
             if j == y[i]:
                 continue
@@ -169,6 +168,13 @@ def svm_loss_naive(
                 # at the same time that the loss is being computed.                   #
                 #######################################################################
                 # Replace "pass" statement with your code
+
+                """
+                1. 만일 margin을 넘지 않았다면 gradient가 0.
+                2. 정답 class에 대한 gradient는 오답 클래스를 낸 각각의 데이터로.
+                """
+                dW[:, j] += X[i]  # 오답 클래스에 대한 gradient
+                dW[:, y[i]] += -X[i]  # 정답 class에 대한 gradient
                 pass
                 #######################################################################
                 #                       END OF YOUR CODE                              #
@@ -187,7 +193,7 @@ def svm_loss_naive(
     # and add it to dW. (part 2)                                                #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    dW += 2 * reg * W
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -195,9 +201,7 @@ def svm_loss_naive(
     return loss, dW
 
 
-def svm_loss_vectorized(
-    W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
-):
+def svm_loss_vectorized(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float):
     """
     Structured SVM loss function, vectorized implementation. When you implment
     the regularization over W, please DO NOT multiply the regularization term by
@@ -223,7 +227,18 @@ def svm_loss_vectorized(
     # result in loss.                                                           #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    num_train = X.shape[0]
+    scores = X @ W
+    indicies = y.squeeze(-1)
+    correct_scores = torch.gather(scores, dim=1, index=indicies)
+    margined_scores = scores - correct_scores + 1
+    margined_scores[torch.arange(num_train), y] = 0
+
+    loss = (
+        sum(torch.where(margined_scores > 0, margined_scores, torch.tensor(0.0)))
+        / num_train
+    )
+    loss += reg * torch.sum(W * W)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -238,7 +253,19 @@ def svm_loss_vectorized(
     # loss.                                                                     #
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+    mask = torch.where(margined_scores > 0, torch.tensor(1.0), torch.tensor(0.0))
+    # 정답 클래스보다 점수를 크게 준 class 에 대해서만 존재하게 됨.
+
+    # 각 데이터별로 마진을 위반한 오답 클래스의 총 개수를 구합니다. (N,)
+    num_violations = torch.sum(mask, dim=1)
+
+    # 정답 클래스 위치(y)에는 마진 위반 횟수만큼 -1을 곱한 값을 대입합니다.
+    mask[torch.arange(num_train), y] = -num_violations
+
+    # 체인 룰 적용: X의 전치행렬 (D, N)과 마스크 행렬 (N, C)을 곱하여 dW (D, C) 생성
+    dW = (X.t() @ mask) / num_train
+
+    dW += 2 * reg * W
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -246,9 +273,7 @@ def svm_loss_vectorized(
     return loss, dW
 
 
-def sample_batch(
-    X: torch.Tensor, y: torch.Tensor, num_train: int, batch_size: int
-):
+def sample_batch(X: torch.Tensor, y: torch.Tensor, num_train: int, batch_size: int):
     """
     Sample batch_size elements from the training data and their
     corresponding labels to use in this round of gradient descent.
@@ -309,9 +334,7 @@ def train_linear_classifier(
     if W is None:
         # lazily initialize W
         num_classes = torch.max(y) + 1
-        W = 0.000001 * torch.randn(
-            dim, num_classes, device=X.device, dtype=X.dtype
-        )
+        W = 0.000001 * torch.randn(dim, num_classes, device=X.device, dtype=X.dtype)
     else:
         num_classes = W.shape[1]
 
@@ -453,9 +476,7 @@ def test_one_param_set(
 # **************************************************#
 
 
-def softmax_loss_naive(
-    W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
-):
+def softmax_loss_naive(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float):
     """
     Softmax loss function, naive implementation (with loops).  When you implment
     the regularization over W, please DO NOT multiply the regularization term by
