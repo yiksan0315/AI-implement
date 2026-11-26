@@ -155,9 +155,11 @@ def svm_loss_naive(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
         scores = W.t().mv(X[i])
         correct_class_score = scores[y[i]]  # 실제 정답인 class에게 평가한 점수
         for j in range(num_classes):
-            if j == y[i]:
+            if j == y[i]:  # 정답인 경우에는 패스.
                 continue
-            margin = scores[j] - correct_class_score + 1  # note delta = 1
+            margin = (
+                scores[j] - correct_class_score + 1
+            )  # note delta = 1, margin은 1로 줌.
             if margin > 0:
                 loss += margin
                 #######################################################################
@@ -174,7 +176,9 @@ def svm_loss_naive(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
                 2. 정답 class에 대한 gradient는 오답 클래스를 낸 각각의 데이터로.
                 """
                 dW[:, j] += X[i]  # 오답 클래스에 대한 gradient
-                dW[:, y[i]] += -X[i]  # 정답 class에 대한 gradient
+                dW[:, y[i]] += -X[i]
+                # 정답 class에 대한 gradient. 정답 클래스의 w는 모두 포함되어 있다.
+                # i가 정답 클래스라고 한다면 s_j - s_i의 합이 svm loss이므로.
                 pass
                 #######################################################################
                 #                       END OF YOUR CODE                              #
@@ -187,12 +191,14 @@ def svm_loss_naive(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: float
     # Add regularization to the loss.
     loss += reg * torch.sum(W * W)
 
+
     #############################################################################
     # TODO:                                                                     #
     # Compute the gradient of the loss function w.r.t. the regularization term  #
     # and add it to dW. (part 2)                                                #
     #############################################################################
     # Replace "pass" statement with your code
+    dW /= num_train
     dW += 2 * reg * W
     #############################################################################
     #                             END OF YOUR CODE                              #
@@ -229,15 +235,18 @@ def svm_loss_vectorized(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: 
     # Replace "pass" statement with your code
     num_train = X.shape[0]
     scores = X @ W
-    indicies = y.squeeze(-1)
-    correct_scores = torch.gather(scores, dim=1, index=indicies)
-    margined_scores = scores - correct_scores + 1
-    margined_scores[torch.arange(num_train), y] = 0
+    indicies = y.unsqueeze(1)
 
-    loss = (
-        sum(torch.where(margined_scores > 0, margined_scores, torch.tensor(0.0)))
-        / num_train
+    correct_scores = torch.gather(
+        scores, dim=1, index=indicies
+    )  # 실제 정답에 대해서 판별한 점수를 vector화. 각 데이터에 대해서 정답에 해당하는 점수만을 모음.
+    margined_scores = scores - correct_scores + 1  # 마진을 넘었는지?
+    margined_scores[torch.arange(num_train), y] = (
+        0  # 각 데이터 중, 정답 클래스에 해당하는 열은 0으로 초기화. 정답 클래스는 Loss 합산 시 포함하지 않으므로.
     )
+    # margin이 0보다 크면 그대로, 아니면 0으로.
+    loss = torch.sum(margined_scores.clamp(min=0.0)) / num_train
+    
     loss += reg * torch.sum(W * W)
     #############################################################################
     #                             END OF YOUR CODE                              #
@@ -253,16 +262,21 @@ def svm_loss_vectorized(W: torch.Tensor, X: torch.Tensor, y: torch.Tensor, reg: 
     # loss.                                                                     #
     #############################################################################
     # Replace "pass" statement with your code
-    mask = torch.where(margined_scores > 0, torch.tensor(1.0), torch.tensor(0.0))
-    # 정답 클래스보다 점수를 크게 준 class 에 대해서만 존재하게 됨.
+    mask = (margined_scores > 0).to(X.dtype) # 데이터 타입 일치를 위해.
+    # 정답 클래스보다 점수를 크게 준 class 에 대해서만 존재하게 되며, 그러한 것들은 0보다 크므로 1으로, 아닌 것은 0으로 표시.
 
-    # 각 데이터별로 마진을 위반한 오답 클래스의 총 개수를 구합니다. (N,)
+    # 각 데이터별로 마진을 위반한 오답 클래스의 총 개수를 구함.
     num_violations = torch.sum(mask, dim=1)
 
-    # 정답 클래스 위치(y)에는 마진 위반 횟수만큼 -1을 곱한 값을 대입합니다.
+    # 정답 클래스 위치(y)에는 마진 위반 횟수만큼 -1을 곱한 값을 대입. 정답 클래스의 가중치에 대한 미분은 데이터에 -1을 곱한 값.
     mask[torch.arange(num_train), y] = -num_violations
 
-    # 체인 룰 적용: X의 전치행렬 (D, N)과 마스크 행렬 (N, C)을 곱하여 dW (D, C) 생성
+    # 체인 룰 적용: X의 전치행렬 (D, N): dS / dW 과 마스크 행렬 (N, C): dL / dS 을 곱하여 dW (D, C) 생성
+    """
+    dS / dW는 원래 4차원 텐서이지만, 서로 다른 데이터값에 대해서는 해당 점수는 전혀 무관하기 때문에 0이 많은 sparse하게 나온다.
+    따라서 각각의 데이터에 대해서 독립적으로 계산하고, 이를 합산하여서 계산할 수 있다. 이는 class에 대해서 마찬가지 이므로, 
+    그러한 부분들을 전부 합쳐버리면 이는 2차원 텐서로 바꿀 수 있다.
+    """
     dW = (X.t() @ mask) / num_train
 
     dW += 2 * reg * W
